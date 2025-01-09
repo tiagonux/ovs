@@ -6,9 +6,11 @@ Description: Don't monitor ipsec daemon
 Author: James Page <james.page@ubuntu.com>
 Forwarded: not-needed
 
---- a/utilities/ovs-ctl.in
-+++ b/utilities/ovs-ctl.in
-@@ -245,7 +245,7 @@ start_ovs_ipsec () {
+Index: openvswitch/utilities/ovs-ctl.in
+===================================================================
+--- openvswitch.orig/utilities/ovs-ctl.in
++++ openvswitch/utilities/ovs-ctl.in
+@@ -250,7 +250,7 @@ start_ovs_ipsec () {
          --pidfile=${rundir}/ovs-monitor-ipsec.pid \
          --ike-daemon=$IKE_DAEMON \
          $no_restart \
@@ -16,3 +18,4 @@ Forwarded: not-needed
 +        --log-file --detach unix:${rundir}/db.sock || return 1
      return 0
  }
+ 

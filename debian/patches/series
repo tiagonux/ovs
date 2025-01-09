@@ -1,1 +1,3 @@
 ovs-ctl-ipsec.patch
+lp-2060434-tests-Fix-compatibility-issue-with-Python-3.13-in.patch
+ofproto-dpif-xlate-Fix-continuations-with-associated-metering.patch

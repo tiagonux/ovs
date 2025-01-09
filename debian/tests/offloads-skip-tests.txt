@@ -1,0 +1,8 @@
+# LP: #2020677
+check interface meter offloading
+# LP: #2040099
+conntrack - SNAT with port range with exhaustion
+# LP: #2062506
+conntrack - ICMP related with SNAT
+# LP: #2063083
+conntrack - zones from other field, more tests

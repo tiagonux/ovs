@@ -24,3 +24,4 @@ ExecReload=/usr/share/openvswitch/scripts/ovs-ctl --no-ovsdb-server \
           --no-record-hostname \
           restart $OVS_CTL_OPTS
 TimeoutSec=300
+OOMScoreAdjust=-900

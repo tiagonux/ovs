@@ -1,0 +1,199 @@
+From c560f6ca3257dd3b64e01a4a244b02b90216858b Mon Sep 17 00:00:00 2001
+From: Aaron Conole <aconole@redhat.com>
+Date: Fri, 22 Mar 2024 09:40:16 -0400
+Subject: [PATCH] ofproto-dpif-xlate: Fix continuations with associated
+ metering.
+
+Open vSwitch supports the ability to invoke a controller action by way
+of a sample action with a specified meter.  In the normal case, this
+sample action is transparently generated during xlate processing.  However,
+when executing via a continuation, the logic to generate the sample
+action when finishing the context freeze was missing.  The result is that
+the behavior when action is 'controller(pause,meter_id=1)' does not match
+the behavior when action is 'controller(meter_id=1)'.
+
+OVN and other controller solutions may rely on this metering to protect
+the control path, so it is critical to preserve metering, whether we are
+doing a plain old send to controller, or a continuation.
+
+Fixes: 77ab5fd2a95b ("Implement serializing the state of packet traversal in "continuations".")
+Reported-at: https://issues.redhat.com/browse/FDP-455
+Tested-by: Alex Musil <amusil@redhat.com>
+Signed-off-by: Aaron Conole <aconole@redhat.com>
+Acked-by: Ilya Maximets <i.maximets@ovn.org>
+---
+ ofproto/ofproto-dpif-xlate.c | 66 +++++++++++++++++++-----------------
+ tests/ofproto-dpif.at        | 51 ++++++++++++++++++++++++++++
+ 2 files changed, 85 insertions(+), 32 deletions(-)
+
+diff --git a/ofproto/ofproto-dpif-xlate.c b/ofproto/ofproto-dpif-xlate.c
+index 89f183182ea..7c495089509 100644
+--- a/ofproto/ofproto-dpif-xlate.c
++++ b/ofproto/ofproto-dpif-xlate.c
+@@ -5080,10 +5080,37 @@ put_controller_user_action(struct xlate_ctx *ctx,
+                            bool dont_send, bool continuation,
+                            uint32_t recirc_id, int len,
+                            enum ofp_packet_in_reason reason,
++                           uint32_t provider_meter_id,
+                            uint16_t controller_id)
+ {
+     struct user_action_cookie cookie;
+ 
++    /* If the controller action didn't request a meter (indicated by a
++     * 'meter_id' argument other than NX_CTLR_NO_METER), see if one was
++     * configured through the "controller" virtual meter.
++     *
++     * Internally, ovs-vswitchd uses UINT32_MAX to indicate no meter is
++     * configured. */
++    uint32_t meter_id;
++    if (provider_meter_id == UINT32_MAX) {
++        meter_id = ctx->xbridge->ofproto->up.controller_meter_id;
++    } else {
++        meter_id = provider_meter_id;
++    }
++
++    size_t offset;
++    size_t ac_offset;
++    if (meter_id != UINT32_MAX) {
++        /* If controller meter is configured, generate
++         * clone(meter,userspace) action. */
++        offset = nl_msg_start_nested(ctx->odp_actions, OVS_ACTION_ATTR_SAMPLE);
++        nl_msg_put_u32(ctx->odp_actions, OVS_SAMPLE_ATTR_PROBABILITY,
++                       UINT32_MAX);
++        ac_offset = nl_msg_start_nested(ctx->odp_actions,
++                                        OVS_SAMPLE_ATTR_ACTIONS);
++        nl_msg_put_u32(ctx->odp_actions, OVS_ACTION_ATTR_METER, meter_id);
++    }
++
+     memset(&cookie, 0, sizeof cookie);
+     cookie.type = USER_ACTION_COOKIE_CONTROLLER;
+     cookie.ofp_in_port = OFPP_NONE,
+@@ -5101,6 +5128,11 @@ put_controller_user_action(struct xlate_ctx *ctx,
+     uint32_t pid = dpif_port_get_pid(ctx->xbridge->dpif, odp_port);
+     odp_put_userspace_action(pid, &cookie, sizeof cookie, ODPP_NONE,
+                              false, ctx->odp_actions, NULL);
++
++    if (meter_id != UINT32_MAX) {
++        nl_msg_end_nested(ctx->odp_actions, ac_offset);
++        nl_msg_end_nested(ctx->odp_actions, offset);
++    }
+ }
+ 
+ static void
+@@ -5145,32 +5177,6 @@ xlate_controller_action(struct xlate_ctx *ctx, int len,
+     }
+     recirc_refs_add(&ctx->xout->recircs, recirc_id);
+ 
+-    /* If the controller action didn't request a meter (indicated by a
+-     * 'meter_id' argument other than NX_CTLR_NO_METER), see if one was
+-     * configured through the "controller" virtual meter.
+-     *
+-     * Internally, ovs-vswitchd uses UINT32_MAX to indicate no meter is
+-     * configured. */
+-    uint32_t meter_id;
+-    if (provider_meter_id == UINT32_MAX) {
+-        meter_id = ctx->xbridge->ofproto->up.controller_meter_id;
+-    } else {
+-        meter_id = provider_meter_id;
+-    }
+-
+-    size_t offset;
+-    size_t ac_offset;
+-    if (meter_id != UINT32_MAX) {
+-        /* If controller meter is configured, generate clone(meter, userspace)
+-         * action. */
+-        offset = nl_msg_start_nested(ctx->odp_actions, OVS_ACTION_ATTR_SAMPLE);
+-        nl_msg_put_u32(ctx->odp_actions, OVS_SAMPLE_ATTR_PROBABILITY,
+-                       UINT32_MAX);
+-        ac_offset = nl_msg_start_nested(ctx->odp_actions,
+-                                        OVS_SAMPLE_ATTR_ACTIONS);
+-        nl_msg_put_u32(ctx->odp_actions, OVS_ACTION_ATTR_METER, meter_id);
+-    }
+-
+     /* Generate the datapath flows even if we don't send the packet-in
+      * so that debugging more closely represents normal state. */
+     bool dont_send = false;
+@@ -5178,12 +5184,7 @@ xlate_controller_action(struct xlate_ctx *ctx, int len,
+         dont_send = true;
+     }
+     put_controller_user_action(ctx, dont_send, false, recirc_id, len,
+-                               reason, controller_id);
+-
+-    if (meter_id != UINT32_MAX) {
+-        nl_msg_end_nested(ctx->odp_actions, ac_offset);
+-        nl_msg_end_nested(ctx->odp_actions, offset);
+-    }
++                               reason, provider_meter_id, controller_id);
+ }
+ 
+ /* Creates a frozen state, and allocates a unique recirc id for the given
+@@ -5235,6 +5236,7 @@ finish_freezing__(struct xlate_ctx *ctx, uint8_t table)
+         put_controller_user_action(ctx, false, true, recirc_id,
+                                    ctx->pause->max_len,
+                                    ctx->pause->reason,
++                                   ctx->pause->provider_meter_id,
+                                    ctx->pause->controller_id);
+     } else {
+         if (ctx->recirc_update_dp_hash) {
+diff --git a/tests/ofproto-dpif.at b/tests/ofproto-dpif.at
+index a1393f7f8e5..3eaccb13a69 100644
+--- a/tests/ofproto-dpif.at
++++ b/tests/ofproto-dpif.at
+@@ -6195,6 +6195,57 @@ AT_CHECK([test 1 = `$PYTHON3 "$top_srcdir/utilities/ovs-pcap.in" p2-tx.pcap | wc
+ OVS_VSWITCHD_STOP
+ AT_CLEANUP
+ 
++AT_SETUP([ofproto-dpif - continuation with meters])
++AT_KEYWORDS([continuations pause meters])
++OVS_VSWITCHD_START
++add_of_ports br0 1 2
++
++dnl Add meter with id=1.
++AT_CHECK([ovs-ofctl -O OpenFlow13 add-meter br0 'meter=1 pktps bands=type=drop rate=1'])
++
++AT_DATA([flows.txt], [dnl
++table=0 dl_dst=50:54:00:00:00:0a actions=goto_table(1)
++table=1 dl_dst=50:54:00:00:00:0a actions=controller(pause,meter_id=1)
++])
++AT_CHECK([ovs-ofctl -O OpenFlow13 add-flows br0 flows.txt])
++
++on_exit 'kill $(cat ovs-ofctl.pid)'
++AT_CAPTURE_FILE([ofctl_monitor.log])
++AT_CHECK([ovs-ofctl monitor br0 65534 invalid_ttl -P nxt_packet_in \
++                    --detach --no-chdir --pidfile 2> ofctl_monitor.log])
++
++AT_CHECK([ovs-appctl netdev-dummy/receive p1 \
++          'in_port(1),eth(src=50:54:00:00:00:09,dst=50:54:00:00:00:0a),eth_type(0x1234)'])
++
++OVS_WAIT_UNTIL([test $(wc -l < ofctl_monitor.log) -ge 2])
++OVS_APP_EXIT_AND_WAIT([ovs-ofctl])
++AT_CHECK([cat ofctl_monitor.log], [0], [dnl
++NXT_PACKET_IN (xid=0x0): cookie=0x0 total_len=14 in_port=1 (via action) data_len=14 (unbuffered)
++vlan_tci=0x0000,dl_src=50:54:00:00:00:09,dl_dst=50:54:00:00:00:0a,dl_type=0x1234
++])
++
++AT_CHECK([ovs-appctl revalidator/purge], [0])
++AT_CHECK([ovs-ofctl -O OpenFlow13 dump-flows br0 | ofctl_strip | sort], [0], [dnl
++ n_packets=1, n_bytes=14, dl_dst=50:54:00:00:00:0a actions=goto_table:1
++ table=1, n_packets=1, n_bytes=14, dl_dst=50:54:00:00:00:0a actions=controller(pause,meter_id=1)
++OFPST_FLOW reply (OF1.3):
++])
++
++AT_CHECK([ovs-ofctl -O OpenFlow13 dump-meters br0 | ofctl_strip | sort], [0], [dnl
++OFPST_METER_CONFIG reply (OF1.3):
++meter=1 pktps bands=
++type=drop rate=1
++])
++
++AT_CHECK([ovs-ofctl -O OpenFlow13 meter-stats br0 | strip_timers], [0], [dnl
++OFPST_METER reply (OF1.3) (xid=0x2):
++meter:1 flow_count:0 packet_in_count:1 byte_in_count:14 duration:0.0s bands:
++0: packet_count:0 byte_count:0
++])
++
++OVS_VSWITCHD_STOP
++AT_CLEANUP
++
+ AT_SETUP([ofproto-dpif - continuation with patch port])
+ AT_KEYWORDS([continuations pause resume])
+ OVS_VSWITCHD_START(

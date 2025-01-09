@@ -21,3 +21,4 @@ ExecReload=/usr/share/openvswitch/scripts/ovs-ctl --no-ovs-vswitchd \
 RuntimeDirectory=openvswitch
 RuntimeDirectoryMode=0755
 RuntimeDirectoryPreserve=yes
+OOMScoreAdjust=-900
