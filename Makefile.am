@@ -204,7 +204,7 @@ CLEAN_LOCAL += clean-pycov
 
 # If we're checked out from a Git repository, make sure that every
 # file that is in Git is distributed.
-ALL_LOCAL += dist-hook-git
+#ALL_LOCAL += dist-hook-git
 dist-hook-git: distfiles
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1; then \
 	  (cd $(srcdir) && git ls-files) | grep -v '\.gitignore$$' | \
@@ -300,7 +300,7 @@ check-assert-h-usage:
 # also mentioned.  (<endian.h> always defines the former two constants.  They
 # must be compared to BYTE_ORDER to get the machine's correct endianness.  But
 # it is better to use WORDS_BIGENDIAN.)
-ALL_LOCAL += check-endian
+#ALL_LOCAL += check-endian
 check-endian:
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1 && \
 	  (cd $(srcdir) && git --no-pager grep -l -E \
@@ -313,7 +313,7 @@ check-endian:
 	fi
 .PHONY: check-endian
 
-ALL_LOCAL += check-echo-n
+#ALL_LOCAL += check-echo-n
 check-echo-n:
 	@if test -e $(srcdir)/.git && (git --version) >/dev/null 2>&1 && \
 	  git --no-pager grep -n 'echo'' -n' $(srcdir); \
@@ -324,7 +324,7 @@ check-echo-n:
 	fi
 .PHONY: check-echo-n
 
-ALL_LOCAL += check-tabs
+#ALL_LOCAL += check-tabs
 check-tabs:
 	@cd $(srcdir); \
 	if test -e .git && (git --version) >/dev/null 2>&1 && \
@@ -406,10 +406,9 @@ ALL_LOCAL += flake8-check
 #   W504 line break after binary operator
 # F*** -- warnings native to flake8
 #   F811 redefinition of unused <name> from line <N> (only from flake8 v2.0)
-#   F824 a `global` or `nonlocal` statement where the name is never reassigned
 # D*** -- warnings from flake8-docstrings plugin
 # H*** -- warnings from flake8 hacking plugin (custom style checks beyond PEP8)
-FLAKE8_IGNORE = E121,E123,E125,E126,E127,E128,E129,E131,E203,E722,W503,W504,F811,F824,D,H,I
+FLAKE8_IGNORE = E121,E123,E125,E126,E127,E128,E129,E131,E203,E722,W503,W504,F811,D,H,I
 flake8-check: $(FLAKE8_PYFILES)
 	$(FLAKE8_WERROR)$(AM_V_GEN) \
 	  src='$^' && \

@@ -11,6 +11,7 @@ EnvironmentFile=-/etc/default/openvswitch-ipsec
 ExecStart=/usr/share/openvswitch/scripts/ovs-ctl --no-monitor \
                     --ike-daemon=strongswan start-ovs-ipsec $OVS_CTL_OPTS
 ExecStop=/usr/share/openvswitch/scripts/ovs-ctl stop-ovs-ipsec
+OOMScoreAdjust=-900
 
 [Install]
 WantedBy=multi-user.target

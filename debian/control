@@ -1,7 +1,8 @@
 Source: openvswitch
 Section: net
 Priority: optional
-Maintainer: Open vSwitch developers <dev@openvswitch.org>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Debian OpenStack <team+openstack@tracker.debian.org>
 Uploaders:
  Simon Horman <horms@debian.org>,
  Thomas Goirand <zigo@debian.org>,
@@ -9,32 +10,35 @@ Uploaders:
  Luca Boccassi <bluca@debian.org>,
  Christian Ehrhardt <christian.ehrhardt@canonical.com>,
 Build-Depends:
+ architecture-is-64-bit,
  autoconf (>= 2.64),
  automake (>= 1.10),
  bzip2,
- debhelper-compat (= 10),
+ debhelper-compat (= 13),
  dh-exec,
  dh-python,
  dh-sequence-python3,
  dh-sequence-sphinxdoc,
  graphviz,
  iproute2,
+ libbpf-dev,
  libcap-ng-dev,
- libdbus-1-dev [amd64 i386 ppc64el arm64],
-# DPDK_NETDEV  libdpdk-dev (>= 23.11) [amd64 i386 ppc64el arm64],
- libnuma-dev [amd64 i386 ppc64el arm64],
- libpcap-dev [amd64 i386 ppc64el arm64],
+ libdbus-1-dev [amd64 i386 ppc64el arm64 riscv64],
+ libdpdk-dev (>= 22.11.3-2~) [amd64 i386 ppc64el arm64 riscv64],
+ libnuma-dev [amd64 i386 ppc64el arm64 riscv64 s390x],
+ libpcap-dev [amd64 i386 ppc64el arm64 riscv64],
  libssl-dev,
  libtool,
  libunbound-dev,
+ libxdp-dev (>= 1.2.9~) [!alpha !arc !hppa !ia64 !m68k !sh4],
  openssl,
- pkg-config,
+ pkgconf,
  procps,
  python3-all-dev,
  python3-setuptools,
  python3-sortedcontainers,
  python3-sphinx,
-Standards-Version: 4.6.1
+Standards-Version: 4.6.2
 Rules-Requires-Root: no
 Homepage: http://openvswitch.org/
 Vcs-Browser: https://salsa.debian.org/openstack-team/third-party/openvswitch/-/tree/debian/experimental
@@ -51,9 +55,9 @@ Suggests:
  ethtool,
  openvswitch-doc,
 Breaks:
- openvswitch-switch (<< 2.13~),
+ openvswitch-switch (<< 2.13.0~git20200212.15ae9db33-0ubuntu2~),
 Replaces:
- openvswitch-switch (<< 2.13~),
+ openvswitch-switch (<< 2.13.0~git20200212.15ae9db33-0ubuntu2~),
 Description: Open vSwitch common components
  Open vSwitch is a production quality, multilayer, software-based,
  Ethernet virtual switch. It is designed to enable massive network
@@ -91,7 +95,7 @@ Depends:
  iproute2,
  openvswitch-common (= ${binary:Version}),
  openvswitch-switch (= ${binary:Version}),
- python3-openvswitch (= ${source:Version}),
+ python3-openvswitch (= ${binary:Version}),
  strongswan,
  ${misc:Depends},
  ${shlibs:Depends},
@@ -155,7 +159,7 @@ Depends:
  openvswitch-common (= ${binary:Version}),
  procps,
  python3-netifaces,
- python3-openvswitch (>= ${source:Version}),
+ python3-openvswitch (>= ${binary:Version}),
  uuid-runtime,
  ${misc:Depends},
  ${python3:Depends},
@@ -176,34 +180,34 @@ Description: Open vSwitch switch implementations
  openvswitch-switch provides the userspace components and utilities for
  the Open vSwitch kernel-based switch.
 
-# DPDK_NETDEV Package: openvswitch-switch-dpdk
-# DPDK_NETDEV Architecture: amd64 arm64 i386 ppc64el
-# DPDK_NETDEV Pre-Depends: ${misc:Pre-Depends},
-# DPDK_NETDEV Depends:
-# DPDK_NETDEV  dpdk,
-# DPDK_NETDEV  openvswitch-switch (= ${binary:Version}),
-# DPDK_NETDEV  ${misc:Depends},
-# DPDK_NETDEV  ${python3:Depends},
-# DPDK_NETDEV  ${shlibs:Depends},
-# DPDK_NETDEV Enhances:
-# DPDK_NETDEV  openvswitch-switch,
-# DPDK_NETDEV Description: DPDK enabled Open vSwitch switch implementation
-# DPDK_NETDEV  Open vSwitch is a production quality, multilayer, software-based,
-# DPDK_NETDEV  Ethernet virtual switch. It is designed to enable massive network
-# DPDK_NETDEV  automation through programmatic extension, while still supporting
-# DPDK_NETDEV  standard management interfaces and protocols (e.g. NetFlow, IPFIX,
-# DPDK_NETDEV  sFlow, SPAN, RSPAN, CLI, LACP, 802.1ag). In addition, it is designed
-# DPDK_NETDEV  to support distribution across multiple physical servers similar to
-# DPDK_NETDEV  VMware's vNetwork distributed vswitch or Cisco's Nexus 1000V.
-# DPDK_NETDEV  .
-# DPDK_NETDEV  openvswitch-switch provides the userspace components and utilities for
-# DPDK_NETDEV  the Open vSwitch kernel-based switch.
-# DPDK_NETDEV  .
-# DPDK_NETDEV  DPDK is a set of libraries for fast packet processing. Applications run
-# DPDK_NETDEV  in user-space and communicate directly with dedicated network interfaces.
-# DPDK_NETDEV  .
-# DPDK_NETDEV  This package provides a DPDK enabled implementation of the ovs-vswitchd
-# DPDK_NETDEV  binary.
+Package: openvswitch-switch-dpdk
+Architecture: amd64 arm64 i386 ppc64el riscv64
+Pre-Depends: ${misc:Pre-Depends},
+Depends:
+ dpdk,
+ openvswitch-switch (= ${binary:Version}),
+ ${misc:Depends},
+ ${python3:Depends},
+ ${shlibs:Depends},
+Enhances:
+ openvswitch-switch,
+Description: DPDK enabled Open vSwitch switch implementation
+ Open vSwitch is a production quality, multilayer, software-based,
+ Ethernet virtual switch. It is designed to enable massive network
+ automation through programmatic extension, while still supporting
+ standard management interfaces and protocols (e.g. NetFlow, IPFIX,
+ sFlow, SPAN, RSPAN, CLI, LACP, 802.1ag). In addition, it is designed
+ to support distribution across multiple physical servers similar to
+ VMware's vNetwork distributed vswitch or Cisco's Nexus 1000V.
+ .
+ openvswitch-switch provides the userspace components and utilities for
+ the Open vSwitch kernel-based switch.
+ .
+ DPDK is a set of libraries for fast packet processing. Applications run
+ in user-space and communicate directly with dedicated network interfaces.
+ .
+ This package provides a DPDK enabled implementation of the ovs-vswitchd
+ binary.
 
 Package: openvswitch-test
 Architecture: all
@@ -214,9 +218,11 @@ Depends:
 Breaks:
  python3-openvswitch (<< 2.17~),
  openvswitch-common (<< 2.17~),
+ openvswitch-switch (<< 3.1.0-1~),
 Replaces:
  python3-openvswitch (<< 2.17~),
  openvswitch-common (<< 2.17~),
+ openvswitch-switch (<< 3.1.0-1~),
 Description: Open vSwitch test package
  Open vSwitch is a production quality, multilayer, software-based,
  Ethernet virtual switch. It is designed to enable massive network
@@ -237,7 +243,6 @@ Replaces:
  openvswitch-common (<< 2.17~),
 Pre-Depends: ${misc:Pre-Depends}
 Depends:
- lsb-base,
  openvswitch-common (= ${binary:Version}),
  openvswitch-pki (= ${source:Version}),
  ${misc:Depends},
@@ -252,11 +257,10 @@ Package: openvswitch-vtep
 Architecture: linux-any
 Pre-Depends: ${misc:Pre-Depends}
 Depends:
- lsb-base,
  lsb-release,
  openvswitch-common (>= ${binary:Version}),
  openvswitch-switch (>= ${binary:Version}),
- python3-openvswitch (>= ${source:Version}),
+ python3-openvswitch (>= ${binary:Version}),
  ${misc:Depends},
  ${python3:Depends},
  ${shlibs:Depends},
@@ -287,7 +291,6 @@ Depends:
 Suggests:
  python3-netaddr,
  python3-pyparsing,
- python3-unbound,
 Description: Python 3 bindings for Open vSwitch
  Open vSwitch is a production quality, multilayer, software-based,
  Ethernet virtual switch. It is designed to enable massive network
@@ -299,3 +302,4 @@ Description: Python 3 bindings for Open vSwitch
  .
  This package contains the full Python 3 bindings for Open vSwitch
  database.
+

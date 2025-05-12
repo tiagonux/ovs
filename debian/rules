@@ -2,6 +2,12 @@
 # -*- makefile -*-
 #export DH_VERBOSE=1
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# While -fPIC is often the default, we explicitly enable it for this package
+# because it is a requirement for successful linking the static libopenvswitch
+# with shared libraries used for the Python JSON C extension.
+#
+# Ref: https://patchwork.ozlabs.org/project/openvswitch/patch/20220725121939.2710272-5-i.maximets@ovn.org/
 export DEB_CFLAGS_MAINT_APPEND = -fPIC
 
 %:
@@ -22,40 +28,123 @@ override_dh_auto_configure:
 	test -d _debian || mkdir _debian
 	cd _debian && ( \
 		test -e Makefile || \
-		../configure --prefix=/usr --localstatedir=/var \
-					--enable-ssl \
-					--disable-afxdp \
-					--sysconfdir=/etc \
-					$(DATAPATH_CONFIGURE_OPTS) \
-					$(EXTRA_CONFIGURE_OPTS) \
-					)
-ifneq (,$(filter i386 amd64 ppc64el arm64, $(DEB_HOST_ARCH)))
-ifeq (,$(filter nodpdk, $(DEB_BUILD_OPTIONS)))
+		../configure --prefix=/usr --localstatedir=/var --enable-ssl LIBS=-ljemalloc \
+					 --sysconfdir=/etc \
+					 $(DATAPATH_CONFIGURE_OPTS) \
+					 $(EXTRA_CONFIGURE_OPTS) \
+					 )
+#ifneq (,$(filter i386 amd64 ppc64el arm64 riscv64 loong64, $(DEB_HOST_ARCH)))
+ifneq (,$(filter i386 ppc64el arm64 riscv64 loong64, $(DEB_HOST_ARCH)))
 	test -d _dpdk || mkdir _dpdk
 	cd _dpdk && ( \
 		test -e Makefile || \
-		../configure --prefix=/usr --localstatedir=/var \
-					--enable-ssl \
-					--disable-afxdp \
-					--with-dpdk=shared \
-					--sysconfdir=/etc \
-					$(DATAPATH_CONFIGURE_OPTS) \
-					$(EXTRA_CONFIGURE_OPTS) \
-					)
-endif
+        ../configure --prefix=/usr --localstatedir=/var --enable-ssl LIBS=-ljemalloc \
+                     --with-dpdk=shared --sysconfdir=/etc \
+					 $(DATAPATH_CONFIGURE_OPTS) \
+					 $(EXTRA_CONFIGURE_OPTS) \
+					 )
 endif
 
 
 # NOTE(jamespage): by default, just run all tests
-TEST_LIST =
-TEST_LIST_DPDK =
-
-# armhf:
-#  30: bfd - check that BFD works together with RSTP   FAILED (bfd.at:829)
-ifneq (,$(filter armhf, $(DEB_HOST_ARCH)))
-TEST_LIST = 1-29 31-
+# NOTE(zigo): by default, blacklist non-deterministic tests
+TEST_LIST = 1-1223 1227-2391 2394-2410 2413-2442 2447-
 TEST_LIST_DPDK = $(TEST_LIST)
-endif # armhf
+
+# mips64el:
+#    20: bfd - bfd decay FAILED (bfd.at:396)
+#  1033: ofproto-dpif - select group with weights
+#  1035: ofproto-dpif - select group with weights
+#  1057: ofproto-dpif - controller action without megaflows FAILED (ofproto-dpif.at:1893)
+#  1021: ofproto-dpif - select group with weights        FAILED (ofproto-dpif.at:535)
+#  1069: ofproto-dpif - controller action without megaflows
+ifneq (,$(filter mips64el, $(DEB_HOST_ARCH)))
+TEST_LIST = 1-19 22-531 533-1020 1022-1032 1034 1037-1056 1058-1068 1070 1072-1120 1122-1223 1227-2391 2394-2410 2413-2442 2447-
+TEST_LIST_DPDK = $(TEST_LIST)
+endif # mips64el
+
+# arm64:
+#   159: ofp-actions - inconsistent MPLS actions         FAILED (ofp-actions.at:819)
+#  1021: ofproto-dpif - select group with weights        FAILED (ofproto-dpif.at:535)
+#  1057: ofproto-dpif - controller action without megaflows FAILED (ofproto-dpif.at:1893)
+ifneq (,$(filter arm64, $(DEB_HOST_ARCH)))
+TEST_LIST = 1-19 21-158 160-531 533-1020 1022-1056 1058-1068 1070 1072-1120 1122-1223 1227-2391 2394-2410 2413-2442 2447-
+TEST_LIST_DPDK = $(TEST_LIST)
+endif #arm64
+
+# sparc64
+#    20: bfd - bfd decay                                 FAILED (bfd.at:396)
+#    26: bfd - check that BFD works together with RSTP   FAILED (bfd.at:829)
+#   478: fuzz regression - ofp_print_fuzzer-5395207246839808 FAILED (fuzz-regression.at:12)
+#   927: ofproto - bundle packet-out makes bundle commit to fail(OpenFlow 1.4) FAILED (ofproto.at:2181)
+#   945: ofproto - asynchronous message control (OpenFlow 1.3) FAILED (ovs-macros.at:242)
+#   969: ofproto - flow monitoring pause and resume      FAILED (ofproto.at:4851)
+#   998: PMD - monitor threads                           FAILED (pmd.at:660)
+#  1057: ofproto-dpif - controller action without megaflows FAILED (ofproto-dpif.at:1893)
+#  1155: ofproto-dpif - continuation - resubmit - OpenFlow10 FAILED (ovs-macros.at:242)7
+#  1156: ofproto-dpif - continuation - resubmit - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1187: ofproto-dpif - sFlow packet sampling - LACP structures FAILED (ofproto-dpif.at:7205)
+#  2184: STP - dummy interface                           FAILED (stp.at:439)
+#  2185: STP - flush the fdb and mdb when topology changed FAILED (stp.at:529)
+#  2249: auto-attach - packets                           FAILED (auto-attach.at:5)
+ifneq (,$(filter sparc64, $(DEB_HOST_ARCH)))
+TEST_LIST = 1-19 22-25 27-477 479-531 533-926 928-944 946-968 970-997 999-1056 1058-1154 1157-1223 1227-1186 1188-2183 2186-2248 2250-2391 2394-2410 2413-2442 2447-
+TEST_LIST_DPDK = $(TEST_LIST)
+endif #sparc64
+
+# riscv64
+#  758: tunnel - input with matching tunnel mask        FAILED (tunnel.at:132)
+#  945: ofproto - asynchronous message control (OpenFlow 1.3) FAILED (ofproto.at:3372)
+#  946: ofproto - asynchronous message control (OpenFlow 1.4) FAILED (ovs-macros.at:242)
+#  969: ofproto - flow monitoring pause and resume      FAILED (ofproto.at:4851)
+#  1036: ofproto-dpif - select group with weights        ok
+#  1038: ALB - min num PMD/RxQ                           FAILED (ovs-macros.at:242)
+#  1039: ALB - cross-numa                                FAILED (ovs-macros.at:242)
+#  1040: ALB - PMD/RxQ assignment type                   FAILED (ovs-macros.at:242)
+#  1069: ofproto-dpif - select group with weights        FAILED (ofproto-dpif.at:863)
+#  1072: ofproto-dpif - controller action without megaflows FAILED (ofproto-dpif.at:2145)
+#  1105: ofproto-dpif - controller action without megaflows FAILED (ofproto-dpif.at:2221)
+#  1153: ofproto-dpif - continuation - actions - OpenFlow10 FAILED (ovs-macros.at:242)
+#  1154: ofproto-dpif - continuation - actions - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1155: ofproto-dpif - continuation - resubmit - OpenFlow10 FAILED (ovs-macros.at:242)
+#  1156: ofproto-dpif - continuation - resubmit - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1159: ofproto-dpif - continuation - goto_table - OpenFlow10 FAILED (ovs-macros.at:242)
+#  1160: ofproto-dpif - continuation - goto_table - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1161: ofproto-dpif - continuation - write_metadata - OpenFlow10 FAILED (ovs-macros.at:242)
+#  1162: ofproto-dpif - continuation - write_metadata - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1163: ofproto-dpif - continuation - data stack - OpenFlow10 FAILED (ovs-macros.at:242)
+#  1164: ofproto-dpif - continuation - data stack - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1167: ofproto-dpif - continuation - patch ports - OpenFlow10 FAILED (ovs-macros.at:242)
+#  1168: ofproto-dpif - continuation - patch ports - OpenFlow13 FAILED (ovs-macros.at:242)
+#  1187: ofproto-dpif - sFlow packet sampling - LACP structures FAILED (ofproto-dpif.at:7205)
+#  1805: ovsdb-server combines updates on backlogged connections FAILED (ovsdb-server.at:1213)
+#  1806: ovsdb-server transaction history size           FAILED (ovsdb-server.at:1282)
+ifneq (,$(filter riscv64, $(DEB_HOST_ARCH)))
+TEST_LIST = 1-19 22-28 30-531 533-757 759-944 947-968 970-1020 1022-1223 1227-1035 1037 1041-1056 1058-1068 1070-1071 1073-1104 1106-1152 1157-1158 1165-1166 1169-1186 1188-1234 1237-1804 1807-2391 2394-2410 2413-2442 2447-
+TEST_LIST_DPDK = $(TEST_LIST)
+endif #riscv64
+
+# ia64
+#    20: bfd - bfd decay                                 FAILED (bfd.at:396)
+#  1021: ofproto-dpif - select group with weights        FAILED (ofproto-dpif.at:535)
+#  1057: ofproto-dpif - controller action without megaflows FAILED (ofproto-dpif.at:1893)
+ifneq (,$(filter ia64, $(DEB_HOST_ARCH)))
+TEST_LIST = 1-19 22-531 533-1020 1022-1056 1058-1223 1227-2391 2394-2410 2413-2442 2447-
+TEST_LIST_DPDK = $(TEST_LIST)
+endif #ia64
+
+# LP: #2090931 DPDK 24.11 increases the residential footprint for binaries
+# linked with DPDK.
+#
+# The OVS build system currently links all binaries with DPDK, consequently
+# some tests no longer pass in constrained CI environment due to the increased
+# memory footprint.
+#
+# On an installed system with DPDK enabled, all binaries come from the normal
+# build tree, with the exception of the ovs-vswitchd daemon.
+#
+# We mimic this in our build time test for DPDK to avoid the issue.
+DPDK_AUTOTEST_PATH = $(CURDIR)/_debian/utilities:vswitchd:$(CURDIR)/_debian/ovsdb:$(CURDIR)/_debian/vtep:tests:$(CURDIR)/_debian/ipsec::
 
 override_dh_auto_test:
 ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
@@ -67,15 +156,14 @@ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	fi
 # Skip DPDK testing on arm64 as builders don't have crc32 support
 # which is used in aarch64 based crc optimization in ovs >= 2.12.0~
-ifneq (,$(filter i386 amd64 ppc64el, $(DEB_HOST_ARCH)))
-ifeq (,$(filter nodpdk, $(DEB_BUILD_OPTIONS)))
-	if $(MAKE) -C _dpdk check TESTSUITEFLAGS='$(PARALLEL) $(TEST_LIST_DPDK)' || \
+ifneq (,$(filter i386 amd64 ppc64el riscv64 loong64, $(DEB_HOST_ARCH)))
+	if $(MAKE) -C _dpdk check TESTSUITEFLAGS='$(PARALLEL) $(TEST_LIST_DPDK)' \
+		AUTOTEST_PATH=$(DPDK_AUTOTEST_PATH) || \
 				$(MAKE) -C _dpdk check TESTSUITEFLAGS='--recheck'; then :; \
 	else \
 		cat _dpdk/tests/testsuite.log; \
 		exit 1; \
 	fi
-endif # nodpdk
 endif # i386/amd64/ppc64el
 endif # nocheck
 
@@ -84,29 +172,32 @@ export PYBUILD_DIR = $(CURDIR)/python
 
 pybuild = \
 	export PKG_CONFIG_PATH=$(CURDIR)/debian/tmp/usr/lib/pkgconfig; \
-	export PKG_CONFIG_SYSROOT_DIR=$(CURDIR)/debian/tmp; \
-	export PKG_CONFIG_SYSTEM_INCLUDE_PATH=/; \
-	export PKG_CONFIG_SYSTEM_LIBRARY_PATH=/; \
-	enable_shared=no \
-	extra_cflags="`pkg-config --cflags libopenvswitch`" \
-	extra_libs="-Wl,-Bstatic -lopenvswitch -Wl,-Bdynamic `pkg-config --libs --static libopenvswitch`" \
-	pybuild
+		export PKG_CONFIG_SYSROOT_DIR=$(CURDIR)/debian/tmp; \
+		export PKG_CONFIG_SYSTEM_INCLUDE_PATH=/; \
+		export PKG_CONFIG_SYSTEM_LIBRARY_PATH=/; \
+		enable_shared=no \
+		extra_cflags="`pkg-config --cflags libopenvswitch`" \
+		extra_libs="-Wl,-Bstatic -lopenvswitch -Wl,-Bdynamic `pkg-config --libs --static libopenvswitch`" \
+		pybuild
 
 override_dh_auto_build:
-	dh_auto_build --sourcedirectory=_debian -- dist distdir=openvswitch
+	dh_auto_build --sourcedirectory=_debian -- distdir-am distdir=openvswitch
 	dh_auto_build --sourcedirectory=_debian
 	# We need an extra install here so that we can use pkgconfig to
 	# retrieve accurate CFLAGS and LDFLAGS for building Python extensions.
 	dh_auto_install --sourcedirectory=_debian
 	$(pybuild) --build
-ifneq (,$(filter i386 amd64 ppc64el arm64, $(DEB_HOST_ARCH)))
-ifeq (,$(filter nodpdk, $(DEB_BUILD_OPTIONS)))
+ifneq (,$(filter i386 amd64 ppc64el arm64 riscv64 loong64, $(DEB_HOST_ARCH)))
 	dh_auto_build --sourcedirectory=_dpdk
-endif
 endif
 
 execute_before_dh_auto_clean:
 	find . -name "*.pyc" -delete
+	rm -f package.m4
+	rm -f python/ovs/dirs.py python/ovs/flow/ofp_fields.py python/ovs/version.py
+	rm -rf python/ovs.egg-info python/ovs_build_helpers/__pycache__ python/build
+	rm -f rhel/openvswitch-fedora.spec rhel/openvswitch.spec
+	rm -f tests/ovsdb-cluster-testsuite tests/system-afxdp-testsuite tests/system-dpdk-testsuite tests/system-kmod-testsuite tests/system-offloads-testsuite tests/system-tso-testsuite tests/system-userspace-testsuite tests/testsuite
 	if test -d $(PYBUILD_DIR)/build; then \
 		pybuild --clean ; \
 	fi

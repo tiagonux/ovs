@@ -19,3 +19,4 @@ ExecStop=/usr/share/openvswitch/scripts/ovs-ctl --no-ovs-vswitchd stop
 ExecReload=/usr/share/openvswitch/scripts/ovs-ctl --no-ovs-vswitchd \
           --no-record-hostname \
           --no-monitor restart $OVS_CTL_OPTS
+OOMScoreAdjust=-900

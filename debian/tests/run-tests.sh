@@ -2,7 +2,7 @@
 
 set -ex
 
-PROGRAM=`basename $0`
+PROGRAM=$(basename "$0")
 TARGET=${PROGRAM}
 
 # The autopkgtests are run in throwaway environments, let's be good citizens
@@ -14,10 +14,14 @@ function cleanup {
 
     # Dump the log to console on error
     if [ $rc -ne 0 ]; then
-        for logfile in $(ls -1 _debian/tests/system-*-testsuite.log); do
-            printf "%s:\n" $(basename $logfile)
-            cat $logfile
+        for logfile in ./_debian/tests/system-*-testsuite.log; do
+            printf "%s:\n" "$(basename "$logfile")"
+            cat "$logfile"
         done
+    fi
+
+    if [ -L /usr/bin/nc ]; then
+        rm -f /usr/bin/nc
     fi
 
     # The DPDK test requires post-test cleanup steps.
@@ -31,14 +35,19 @@ function cleanup {
 
         if dirs +1 > /dev/null 2>&1; then
             popd
-            umount ${BIND_MOUNT_DIR}
-            rmdir ${BIND_MOUNT_DIR}
+            umount "${BIND_MOUNT_DIR}"
+            rmdir "${BIND_MOUNT_DIR}"
         fi
     fi
 
     exit $rc
 }
 trap cleanup EXIT
+
+# The OVS system test suite relies on behavior of the NMAP projects
+# reimplementation of Netcat.
+apt-get remove --yes --purge netcat-openbsd || true
+ln -sf /usr/bin/ncat /usr/bin/nc
 
 # The DPDK test requires preparing steps.
 if [ "$PROGRAM" = "dpdk" ]; then
@@ -73,7 +82,7 @@ if [ "$PROGRAM" = "dpdk" ]; then
     # If the tests are to be run on real physical hardware, you may need
     # to adjust these variables depending on CPU architecture and topology.
     numa_node=$(lscpu | awk '/NUMA node\(s\)/{print$3}')
-    if [ -z "$numa_node" -o "$numa_node" -eq 0 ]; then
+    if [ -z "$numa_node" ] || [ "$numa_node" -eq 0 ]; then
         numa_node=1
     fi
     case "${ARCH}" in
@@ -96,7 +105,7 @@ if [ "$PROGRAM" = "dpdk" ]; then
     esac
 
     printf "Determine hugepage allocation for %s NUMA Node(s) on arch: %s\n" \
-        ${numa_node} ${ARCH}
+           "${numa_node}" "${ARCH}"
     echo "DPDK_NR_2M_PAGES=${DPDK_NR_2M_PAGES}"
     echo "DPDK_NR_1G_PAGES=${DPDK_NR_1G_PAGES}"
 
@@ -109,8 +118,8 @@ EOF
     systemctl restart dpdk
     realhp_2m=$(cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages)
     realhp_1g=$(cat /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages)
-    if [ "$realhp_2m" != "$DPDK_NR_2M_PAGES" -o \
-         "$realhp_1g" != "$DPDK_NR_1G_PAGES" ]; then
+    if [ "$realhp_2m" != "$DPDK_NR_2M_PAGES" ] || \
+       [ "$realhp_1g" != "$DPDK_NR_1G_PAGES" ]; then
         echo "Unable to allocate huge pages required for the test, SKIP test"
         exit 77
     fi
@@ -130,30 +139,9 @@ EOF
     #
     # Ensure we use a short path for running the testsuite (LP:# 2019069).
     BIND_MOUNT_DIR=$(mktemp -d /XXX)
-    mount --bind . ${BIND_MOUNT_DIR}
-    pushd ${BIND_MOUNT_DIR}
+    mount --bind . "${BIND_MOUNT_DIR}"
+    pushd "${BIND_MOUNT_DIR}"
 fi
-
-# A built source tree is required in order to make use of the system level
-# testsuites.  Autopkgtest may be run against both already built and source
-# packages, so we perform this step in either case to ensure the required
-# artifacts are available.
-#
-# We build it here instead of using the `build-needed` Restriction field,
-# because we need to pass in additional environment variables in order to
-# avoid running the build time checks yet another time (they would have just
-# run as part of the package under test build process anyway).
-mk-build-deps \
-    --install \
-    --tool "apt-get -o Debug::pkgProblemResolver=yes \
-            --no-install-recommends --yes" \
-    --remove \
-    debian/control
-
-export DEB_BUILD_OPTIONS="nocheck $DEB_BUILD_OPTIONS"
-debian/rules build
-
-apt-get -y autoremove openvswitch-build-deps
 
 # Ensure none of the Open vSwitch daemons are running.
 systemctl stop \
@@ -199,9 +187,14 @@ for testsuite in ${testsuites}; do
                     "tests/system-${testsuite}-testsuite")
     fi
 
-    set /bin/bash tests/system-${testsuite}-testsuite \
+    set /bin/bash "tests/system-${testsuite}-testsuite" \
             -C _debian/tests \
             -j1 \
-            AUTOTEST_PATH=$(realpath ./tests):$(realpath ./_debian/tests)
-    $@ ${test_list} || $@ --recheck
+            AUTOTEST_PATH="$(realpath ./tests)":"$(realpath ./_debian/tests)"
+    # We cannot double quote the test_list variable below as that would make
+    # bash put single quotes around it for empty test list, which autotest
+    # does not understand.
+    #
+    # shellcheck disable=SC2086
+    "$@" ${test_list} || "$@" --recheck
 done
